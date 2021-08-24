@@ -1,0 +1,39 @@
+单个添加：
+    新增网关 --- 生成 su token 调用iot  ---- 设置 tps，下发到设备  --- 回复 ack 更新 tps，重设超时时间
+                                                                --- biz 进度查询    
+                                                                    检测 ack 是否有错误，
+                                                                    处理 tps，检测 ack 缓存是否已存在，已存在直接返回
+                                                                    如果已经全部完成缓存到 ack 下，重新设置导入等待时间，填充总进度，返回
+                                                                    如果 tps 不存在，已超时，设置为 -1，缓存到 ack 下
+                                                                
+                                                                --- 如果回调检测导入成功，将 su token 删除，设置 ack 失效时间 1 分钟
+                                                                --- 取消操作，删除 su token 和 ack 缓存
+
+
+
+配置表导入：
+    循环调用新增网关  --- 检测是否已存在（pss 已存在，pss 里的网关已存在），pss 不存在时，删除 ack 缓存
+                    --- 缓存 sc:pss hash token， 如果已存在就删除，然后新增
+                    --- 追加 pss hash 缓存
+                    --- 删除 pt:pss token （x）
+
+                                    --- 下发指令，传递 su token ---- iot 设置 tps，下发到设备  --- 回复 ack 更新 tps，重设超时时间
+                                                    --- 查询导入进度
+                                                        获取 pss 缓存，循环其中的 key，即 su token
+                                                        判断是否有 -1 的标识，有则使用 sc su token 获取错误信息，填充到进度查询里
+                                                        处理 tps，检测 ack hash 是否存在，存在并且 size 等于 pss 的 size 直接返回。
+                                                            将 ack 结果分组，-1 超时的 ack，和其他；
+                                                            如果 -1 列表存在，直接返回；
+                                                            将其他类型的 key（device） 提取出来（判空），存到 doneAckDevice；
+                                                            循环 pss 的内容，key（su token） 存在 doneAckDevice 跳过；
+                                                            检查 tps 是否存在，不存在则超时，缓存 ack 设超时30s，清除 pss 和导入相关的缓存，结果返回前端；
+                                                            判断 tps 的进度是否已完成，完成存入 ack hash，设超时 2 分钟；存入 doneAckDevice；
+                                                            pss 循环完后判断 doneAckDevice 和 pss 的 size 是否相等，相等重置 pss 和导入相关的超时时间。
+
+                                                        检测是否有导入异常，ipe，设置 30s 超时
+                                                        返回前端。
+
+
+                                                    --- 检测导入结果，如果全部完成，删除 pss token，删除 pss token 内的所有 su token，设置 ack pss、sc pss 的 hash 超时一分钟
+                                                         如果发生异常，清除 pss 和导入相关的缓存，设置 ack 超时一分钟
+                                                         如果部分完成，更新此网关的在 pss 和 sc pss hash 缓存的标识（0 -> 1）
